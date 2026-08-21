@@ -1,0 +1,234 @@
+---
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# `astral-sh/setup-uv` is pinned to an exact version where most of the actions here ride
+# a floating major tag, and that asymmetry is upstream's rather than a slip here: v8
+# stopped publishing major and minor tags outright, citing the tj-actions compromise, so
+# `@v9` is not a ref that exists. The exact pin is what its release notes prescribe.
+#
+# The consequence worth knowing is for dependabot.yml: this is the one action whose patch
+# and minor releases raise a pull request. The floating majors move only on a major;
+# `dtolnay/rust-toolchain` is held out there because its version is the declared MSRV, as
+# the comment above `rust-lint` says; and `pypa/gh-action-pypi-publish` in release.yml
+# follows upstream's `release/v1` branch.
+#
+# Also from v9: `prune-cache` now defaults to false. Left at the new default -- with
+# `dependencies = []` there is next to nothing to prune, so the cache this grows is small
+# enough that the repository limit is not in play.
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Every supported interpreter on Linux, plus the floor and the ceiling on
+        # macOS and Windows. Windows earns its place here rather than being taken
+        # on trust: this tool decides what a line ending is, and that is the one
+        # platform where getting it wrong rewrites every file it touches.
+        os: [ubuntu-latest]
+        python-version: ['3.10', '3.11', '3.12', '3.13']
+        include:
+          - os: macos-latest
+            python-version: '3.10'
+          - os: macos-latest
+            python-version: '3.13'
+          - os: windows-latest
+            python-version: '3.10'
+          - os: windows-latest
+            python-version: '3.13'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+      - run: uv run --python ${{ matrix.python-version }} python -m pytest -q
+
+  coverage:
+    # One upload on Ubuntu is enough: the suite is interpreter-agnostic Python, and
+    # Codecov merges flags rather than needing a matrix of identical reports.
+    #
+    # `use_oidc` rather than an upload token, for the reason release.yml prefers
+    # Trusted Publishing: a long-lived secret in a repository that needs none is
+    # a liability with no offsetting convenience. Codecov refuses an anonymous
+    # upload outright -- "Token required - not valid tokenless upload" -- so this
+    # is the only authentication left that stores nothing, and `id-token: write`
+    # is what mints the assertion it checks. The permission is granted on this
+    # job alone; the workflow default above stays read-only.
+    #
+    # `fail_ci_if_error` is on because the alternative had already happened: with
+    # it off, every upload since the badge was added was refused for want of a
+    # token while this job reported success, so the only place the failure showed
+    # was the badge reading "unknown". This job is not a required context, so a
+    # Codecov outage is visible here without blocking a merge.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      COVERAGE_REPORT: coverage.xml
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2 # fetch-depth of 2 enables diff coverage
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+          python-version: '3.13'
+      - run: uv run python -m pytest --cov --cov-report=xml -q
+      - uses: codecov/codecov-action@v7
+        with:
+          files: ${{ env.COVERAGE_REPORT }}
+          fail_ci_if_error: true
+          use_oidc: true
+
+  hook:
+    # Resolving the hook through the framework is the only check that reads
+    # `.pre-commit-hooks.yaml` the way a consumer does; the console script passing
+    # says nothing about whether the hook definition is valid.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - run: python -m pip install --disable-pip-version-check pre-commit
+      # `--all-files`, with no list to build and nothing to keep in step. The tool
+      # reads `.unwrapignore` itself, so the exclusion reaches this caller exactly as
+      # it reaches `pre-commit run` and the action -- which is what `exclude:` could
+      # never do here, since try-repo builds its config from `.pre-commit-hooks.yaml`
+      # and never reads `.pre-commit-config.yaml`.
+      - run: pre-commit try-repo . unwrap-markdown-prose-py --all-files --verbose
+      - run: pre-commit try-repo . unwrap-markdown-prose-py-check --all-files --verbose
+      # The Rust pair resolves through the same framework, and `language: rust`
+      # builds it from source -- which is the install cost the README tells a
+      # consumer about, exercised here rather than asserted.
+      - uses: dtolnay/rust-toolchain@1.86.0
+      - run: pre-commit try-repo . unwrap-markdown-prose-rs --all-files --verbose
+      - run: pre-commit try-repo . unwrap-markdown-prose-rs-check --all-files --verbose
+
+  action:
+    # The composite action shares no code path with the hook beyond the CLI, so a
+    # green `hook` job does not cover it.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # No `paths`: the action's default sweep is every tracked Markdown file, and
+      # the tool now drops the corpus from that list on its own. Letting the default
+      # run is the stronger test anyway -- it exercises the path a consumer takes.
+      - name: Run the action against this repository
+        uses: ./
+        with:
+          write: 'false'
+          fail-on-change: 'true'
+
+  # The toolchain is pinned to the MSRV rather than to `stable`, so a language
+  # feature newer than `rust-version` in Cargo.toml fails here rather than in a
+  # consumer's `cargo install`. The two have to move together, which is why
+  # dependabot.yml holds this action out of its actions group.
+  #
+  # No build cache on either job. `[dependencies]` is empty and stays that way,
+  # so a cold compile is a couple of seconds -- less than restoring a cache
+  # would cost, and one fewer action running with this repository's token.
+  rust-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.86.0
+        with:
+          components: rustfmt, clippy
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+
+  rust-test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # The same three platforms the Python matrix uses, for the same reason:
+        # this tool decides what a line ending is, and Windows is where getting
+        # that wrong rewrites every file it touches. The corpus is checked out
+        # verbatim there -- `.gitattributes` marks it `-text` -- so a case
+        # pinning CRLF pins it on every runner.
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.86.0
+      - run: cargo test
+
+  parity:
+    # The CLI tier over both implementations. It is its own job rather than a
+    # step on `test` because it needs a Rust toolchain, and rather than a step on
+    # `rust-test` because it needs an interpreter: the harness that drives both
+    # binaries is the Python one.
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.86.0
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+      - run: cargo build --release
+      # `_runners()` skips the Rust binary when it is absent, so that a
+      # Python-only checkout still runs the tier. Here that skip would turn a
+      # failed build into a silent half-run reported as a pass, so the harness is
+      # told to fail instead.
+      - run: uv run python -m pytest tests/test_cli_corpus.py -q
+        env:
+          REQUIRE_RUST_BINARY: '1'
+      # The enumerated tier says the two implementations agree about what was
+      # anticipated; only this says anything about what was not. The fixed range
+      # is a regression net *only while the generator is frozen* -- any edit to
+      # its fragment bank renames every seed -- so a fresh range derived from the
+      # run number rides along and keeps exploring. A divergence worth keeping
+      # becomes a corpus case, never a seed number.
+      - name: Fuzz both implementations differentially
+        shell: bash
+        run: |
+          python="$(uv run python -c 'import sys; print(sys.executable)')"
+          cargo run --release --quiet --example fuzz -- \
+            --start 1 --count 400 --python "$python -m markdown_prose_hooks"
+          cargo run --release --quiet --example fuzz -- \
+            --start $(( ${{ github.run_number }} * 400 + 100000 )) --count 200 \
+            --python "$python -m markdown_prose_hooks"
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+      - run: uv build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/

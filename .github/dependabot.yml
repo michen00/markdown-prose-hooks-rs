@@ -1,0 +1,85 @@
+---
+# Two ecosystems, not three. There is deliberately no `pre-commit` entry: pre-commit.ci
+# is installed on this repository and its `autoupdate_schedule` accepts only weekly,
+# monthly or quarterly -- no value stands it down -- so it raises hook bumps whatever
+# this file says. Adding the ecosystem would duplicate those pull requests rather than
+# replace them, and two bots opening the same bump is worse than either owning it.
+# .pre-commit-config.yaml sets that cadence; bot-automerge.yml arms both authors.
+version: 2
+updates:
+  # Nothing here is a runtime dependency: `dependencies = []`, and the lock file covers
+  # the dev group alone -- pytest, pytest-cov, ruff. A bump cannot reach a repository
+  # that installs this hook, only the test run that would catch it, so patch and minor
+  # ride on green CI and a major waits for a person.
+  #
+  # For ruff that split does almost no work, and saying so is the honest version. Ruff
+  # is on 0.x, where a breaking release lands as 0.16 -> 0.17 and Dependabot types it
+  # `semver-minor`, so the major hold will not fire until 1.0 -- and ruff decides this
+  # repository's formatting, which is the one dev dependency whose bump arrives as a
+  # diff rather than as a passing build. The `default-days` below is what actually
+  # covers it: a soak on every update, not only the class that never occurs.
+  #
+  # Both keys, deliberately. `semver-major-days` alone left the soak on the class this
+  # repository already holds for a human, while the updates that merge unattended --
+  # polled daily -- had none at all, which is the threat model backwards.
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: daily
+    groups:
+      uv-major:
+        update-types: [major]
+      uv-minor-patch:
+        update-types: [minor, patch]
+    cooldown:
+      semver-major-days: 30
+
+  # Actions here ride a floating major tag wherever upstream publishes one, so Dependabot
+  # raises a pull request only when a major moves. Holding majors -- the obvious policy,
+  # and the one the sibling repositories started with -- would therefore hold nearly every
+  # actions pull request this repository ever receives. That is an outage, not a policy.
+  # The cooldown below is what replaces the hold, and the two are a matched pair:
+  # bot-automerge.yml arms actions majors, and this delay is the only soak period between
+  # a release being published and it merging here unattended.
+  #
+  # Three pins do not float, and `grep -rn 'uses:' .github/workflows` lists them rather
+  # than this comment counting them. `astral-sh/setup-uv` is pinned exactly because
+  # upstream stopped publishing major tags at v8, which makes it the one action whose
+  # patch and minor releases show up here; CI.yml carries that reasoning at the pin
+  # itself. `dtolnay/rust-toolchain` carries the declared MSRV rather than a version to
+  # bump, which is what the `ignore:` entry below is for. `pypa/gh-action-pypi-publish`
+  # is used through the `release/v1` branch upstream documents, so it has no major tag
+  # to follow.
+  #
+  # Still no cargo ecosystem, for the reason there is no runtime Python one: the
+  # Rust crate declares no dependencies either, so the entry would poll a lock
+  # file that only ever records the crate itself.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: cron
+      cronjob: '0 0 1,15 * *' # 1st and 15th monthly at midnight UTC
+    groups:
+      actions:
+        patterns: ['*']
+    ignore:
+      # `dtolnay/rust-toolchain@1.86.0` is not a dependency held at a version --
+      # the version *is* the declared MSRV, matching `rust-version` in
+      # Cargo.toml. Dependabot reads the tag as semver and would raise it to the
+      # newest release, and bot-automerge.yml arms actions updates, so the floor
+      # this repository promises could rise unattended and untested. Raising it
+      # is a decision with a changelog entry, taken in both files at once.
+      - dependency-name: dtolnay/rust-toolchain
+    cooldown:
+      # `default-days` only. GitHub rejects the `semver-*` keys for this ecosystem --
+      # "not supported for the package ecosystem 'github-actions'" -- and an invalid key
+      # here does not degrade gracefully: it invalidates the file and drops this whole
+      # entry, grouping included. Nothing local catches that. The published schema admits
+      # the key in a cooldown block generally and the ecosystem restriction is enforced
+      # server-side, so the file lints clean and fails in the Dependabot tab.
+      #
+      # One number therefore covers every actions update, which is the right net anyway:
+      # these packages execute with this repository's own token inside jobs holding
+      # contents and pull-requests write, and a patch is not safer than a major when the
+      # risk is a compromised publisher rather than a changed interface.
+      default-days: 30
