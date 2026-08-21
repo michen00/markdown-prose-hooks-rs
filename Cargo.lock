@@ -4,13 +4,13 @@ version = 4
 
 [[package]]
 name = "markdown-prose-hooks"
-version = "0.0.1"
+version = "0.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3be34b5864922e2415337653b8150e34a86adad4868ca37456f5bcdf05245094"
+checksum = "2d63f548dcd04513ed34cc2faed53d5e306b2dee1f7b1ab26657edbc4d781278"
 
 [[package]]
 name = "markdown-prose-hooks-rs"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "markdown-prose-hooks",
 ]
