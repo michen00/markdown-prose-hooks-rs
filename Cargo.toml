@@ -7,7 +7,7 @@ name = "markdown-prose-hooks-rs"
 # Tracks the upstream release this tree mirrors, and the dependency below pins
 # to exactly it. A mirror that floated would build a different tool than the one
 # its commit says it is.
-version = "0.2.1"
+version = "0.3.0"
 authors = ["Michael I Chen"]
 edition = "2024"
 # The floor for edition 2024, and what upstream promises a consumer's
@@ -27,7 +27,7 @@ publish = false
 [dependencies]
 # The published crate, which is where the implementation lives. `=` rather than
 # a caret, so this tree builds the version it names and not a later one.
-markdown-prose-hooks = "=0.2.1"
+markdown-prose-hooks = "=0.3.0"
 
 # Copied from upstream deliberately, not vestigially. A profile is read from the
 # package being built and a dependency's profile is ignored, so without this
