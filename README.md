@@ -6,7 +6,7 @@
 
 The two `pre-commit` hook ids for the Rust implementation of [markdown-prose-hooks](https://github.com/michen00/markdown-prose-hooks), and nothing else.
 
-Nothing here is authored. This tree is a reduced view of that repository, carrying only what building and running these two ids requires, so that a consumer downloads one implementation rather than two implementations plus the corpus that specifies them and the notebook that measures them. It is replaced wholesale rather than merged, so an edit made here is an edit that gets overwritten — send it upstream, as [CONTRIBUTING.md](CONTRIBUTING.md) says at more length. A version tag is the exception to all of that motion: a ruleset makes `v*.*.*` here immutable, so the tree `v0.3.0` names is the tree it will always name, while `main` moves on every release.
+Nothing here is authored. This tree is a reduced view of that repository, carrying only what building and running these two ids requires, so that a consumer downloads one implementation rather than two implementations plus the corpus that specifies them and the notebook that measures them. It is replaced wholesale rather than merged, so an edit made here is an edit that gets overwritten — send it upstream, as [CONTRIBUTING.md](CONTRIBUTING.md) says at more length. A version tag is the exception to all of that motion: a ruleset makes `v*.*.*` here immutable, so the tree `v0.4.0` names is the tree it will always name, while `main` moves on every release.
 
 What sits here is a wrapper: a crate whose only dependency is the published `markdown-prose-hooks`, and whose only source file is the binary that calls into it. `pre-commit` builds a `language: rust` hook with `cargo install --bins --root <envdir> --path .`, so it compiles this crate and fetches the implementation from crates.io. `Cargo.lock` is committed on purpose, so the build resolves the version this tree names even if a later one supersedes it.
 
@@ -15,7 +15,7 @@ What sits here is a wrapper: a crate whose only dependency is the published `mar
 ```yaml
 repos:
   - repo: https://github.com/michen00/markdown-prose-hooks-rs
-    rev: v0.3.0 # frozen once published; `pre-commit autoupdate` moves it
+    rev: v0.4.0 # frozen once published; `pre-commit autoupdate` moves it
     hooks:
       # Pick one. The first rewrites the file; the second only reports.
       - id: unwrap-markdown-prose-rs
