@@ -7,11 +7,11 @@ name = "markdown-prose-hooks-rs"
 # Tracks the upstream release this tree mirrors, and the dependency below pins
 # to exactly it. A mirror that floated would build a different tool than the one
 # its commit says it is.
-version = "0.4.0"
+version = "0.5.0"
 authors = ["Michael I Chen"]
 edition = "2024"
-# The floor for edition 2024, and what upstream promises a consumer's
-# `cargo install` will accept.
+# What upstream promises a consumer's `cargo install` will accept, and what its
+# gating CI jobs install. The floor for edition 2024 is 1.85.
 rust-version = "1.86"
 description = "Pre-commit hooks that reflow Markdown prose to one line per paragraph."
 readme = "README.md"
@@ -27,13 +27,12 @@ publish = false
 [dependencies]
 # The published crate, which is where the implementation lives. `=` rather than
 # a caret, so this tree builds the version it names and not a later one.
-markdown-prose-hooks = "=0.4.0"
+markdown-prose-hooks = "=0.5.0"
 
 # Copied from upstream deliberately, not vestigially. A profile is read from the
 # package being built and a dependency's profile is ignored, so without this
-# block the hook binary is built with default release settings. Measured on this
-# tree: 538,496 bytes without it against 352,656 with, which is the same size as
-# the binary upstream releases.
+# block the hook binary is built with default release settings and comes out
+# substantially larger than the binary upstream releases for the same target.
 [profile.release]
 opt-level = "z"
 lto = true
